@@ -1,0 +1,229 @@
+<meta charset="UTF-8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="kems.jpg">
+<title>Kem's</title>
+<center>
+<span id="cards">
+<img id="card1" card="1" src="">
+<img id="card2" card="2" src="">
+<img id="card3" card="3" src="">
+<img id="card4" card="4" src="">
+</span>
+<br><span id="players">
+<span id="player1" style="color:darkblue; font-weight: bold; cursor:pointer" onclick="kems(this)"></span>
+ -  
+<span id="player2" style="color:darkgreen; font-weight: bold; cursor:pointer" onclick="kems(this)"></span>
+[<span id="score1">0</span>
+ / 
+<span id="score2">0</span>]
+<span id="player3" style="color:darkred; font-weight: bold; cursor:pointer" onclick="kems(this)"></span>
+ - 
+<span id="player4" style="color:darkviolet; font-weight: bold; cursor:pointer" onclick="kems(this)"></span>
+</span><br><br>
+<span id="player_cards">
+<img src="">
+<img src="">
+<img src="">
+<img src="">
+</span>
+<style>
+#player1:before, #player2:before, #player3:before, #player4:before{
+  content:'👤 '
+}
+</style>
+<script>
+last_picked_flop = '';
+last_picked = '';
+last_players_pick = {};
+last_timeout = '';
+reload = false;
+
+function start(flop_card, player_card){
+  var cards = document.getElementById('cards').getElementsByTagName('img');
+  var player_cards = document.getElementById('player_cards').getElementsByTagName('img');
+  last_picked_flop = '';
+  last_picked = '';
+  for(i=0; i<cards.length; i++){
+    if(!flop_card)
+      cards[i].addEventListener("click", pick_flop, false);
+    else {
+      cards[i].style.border = '';
+      if(flop_card[i])
+        cards[i].src = 'cards/'+flop_card[i];
+        document.getElementById('cards').setAttribute('loaded',i+1);
+    }
+  }
+  for(i=0; i<player_cards.length; i++){
+    if(!flop_card)
+      player_cards[i].addEventListener("click", pick, false);
+    else {
+      player_cards[i].style.border = '';
+      if(player_card){
+        player_cards[i].src = 'cards/'+player_card[i];
+        document.getElementById('player_cards').setAttribute('loaded',i+1);
+      }
+    }
+  }  
+}
+function pick_flop(e){
+  if(last_picked_flop && last_picked_flop.style.border != '') return false;
+  if(!e.target.style.border && send_message(current_player+'|'+'-1'+'|'+e.target.getAttribute('card'))){
+    if(last_picked_flop) last_picked_flop.style.border = '';
+    last_picked_flop = e.target;
+    pick_switch(last_picked, last_picked_flop);
+  }
+}
+function pick(e){
+  if(!e.target.style.border){
+    if(last_picked) last_picked.style.border = '';
+    e.target.style.border = '5px solid '+document.getElementById('player'+current_player).style.color;
+    last_picked = e.target;
+    pick_switch(last_picked, last_picked_flop);
+  }
+  else {
+    last_picked.style.border = '';
+    last_picked = '';
+  }
+}
+function pick_switch(picked, floped){
+  if(!picked || !floped) return false;
+  clearTimeout(last_timeout);
+  if(send_message(current_player+'|'+picked.src+'|'+floped.getAttribute('card'))){
+    var pi = picked.src;
+    var fl = floped.src;
+    picked.src = fl;
+    floped.src = pi;
+  }
+  picked.style.border = '';
+  floped.style.border = '';
+  last_picked_flop = '';
+  last_picked = '';
+  send_message(current_player+'|'+'-1'+'|'+'0');
+}
+function player_pick(n, player){
+  if(n > 0 && current_player == player && last_players_pick[current_player] != document.getElementById('card'+n)){
+    last_timeout = setTimeout(function(){send_message(current_player+'|'+'-1'+'|'+'0');},2000);
+  }
+  if(last_players_pick[player]) last_players_pick[player].style.border = '';
+  if(n == 0 && current_player == player) last_picked_flop = '';
+  if(n == 0) return delete last_players_pick[player];
+  document.getElementById('card'+n).style.border = '5px solid '+document.getElementById('player'+player).style.color;
+  last_players_pick[player] = document.getElementById('card'+n);
+}
+function player_switch(n, src){
+  document.getElementById('card'+n).style.border = '';
+  document.getElementById('card'+n).src = src;
+}
+start();
+let socket = new WebSocket(location.protocol.replace('http','ws')+'//'+self.location.hostname);
+
+socket.onopen = function(e) {
+  socket.send('ready|'+window.location.hash.substring(1));
+  if(localStorage.getItem('scores')){
+    scores_cache = JSON.parse(localStorage.getItem('scores')); 
+    document.getElementById('score1').innerHTML = scores_cache[0];
+    document.getElementById('score2').innerHTML = scores_cache[1];
+  }
+};
+
+socket.onmessage = function(event) {
+  if(event.data == 'newgame') {alert('Nouvelle partie');return location.reload();}
+  if(event.data == 'refresh') return location.reload();
+  if(event.data.substr(0, 5) == 'kems|' || event.data.substr(0, 6) == 'ckems|'){
+    if(document.getElementById('cards').getAttribute('loaded') == 4 && document.getElementById('player_cards').getAttribute('loaded') == 4){
+      if(event.data.split('|')[1] == 'show'){
+        alert(document.getElementById('player'+event.data.split('|')[2]).innerHTML+' montre '+event.data.split('|')[3]);
+        if(reload) location.reload();
+        return true;
+      }
+      current_cards = document.getElementById('player_cards').getElementsByTagName('img');
+      send_current_cards = new Array();
+      for(i=0; i<current_cards.length; i++){
+        send_current_cards.push(current_cards[i].src.split('/').reverse()[0].split('_')[0]);
+      }
+      send_current_cards = send_current_cards.join(', ');
+      if(event.data.substr(0, 5) == 'kems|'){
+        if(event.data.split('|')[1] == '1' && current_player == '2'){
+          send_message('kems|show|'+current_player+'|'+send_current_cards);
+        }
+        if(event.data.split('|')[1] == '2' && current_player == '1'){
+          send_message('kems|show|'+current_player+'|'+send_current_cards);
+        }
+        if(event.data.split('|')[1] == '3' && current_player == '4'){
+          send_message('kems|show|'+current_player+'|'+send_current_cards);
+        }
+        if(event.data.split('|')[1] == '4' && current_player == '3'){
+          send_message('kems|show|'+current_player+'|'+send_current_cards);
+        }
+        alert(document.getElementById('player'+event.data.split('|')[1]).innerHTML+' dit KEMS !');
+      }
+      else {
+        if(current_player == event.data.split('|')[2]){
+          send_message('ckems|show|'+current_player+'|'+send_current_cards);
+        }
+        alert(document.getElementById('player'+event.data.split('|')[1]).innerHTML+' dit contre KEMS !');
+      }
+    }
+    return true;
+  }
+  var info = JSON.parse(event.data);
+  if(info.player){
+    current_player = info.player;
+  }
+  if(info.players){
+    for (i in info.players) {
+      document.getElementById('player'+i).innerHTML = info.players[i];
+      document.getElementById('players').setAttribute('count',i);
+    }
+  }
+  if(info.flop_card && info.player_card)
+    start(info.flop_card, info.player_card);
+  else if(info.flop_card){
+    if(!document.getElementById('player_cards').getAttribute('loaded')) socket.send(current_player);
+    start(info.flop_card);  
+  }
+  if(info.players_pick){
+    for (player in info.players_pick) {
+      player_pick(info.players_pick[player], player); 
+    }
+  }
+  if(info.scores){
+    old_score1 = document.getElementById('score1').innerHTML;
+    old_score2 = document.getElementById('score2').innerHTML;
+    document.getElementById('score1').innerHTML = info.scores[0];
+    document.getElementById('score2').innerHTML = info.scores[1];
+    localStorage.setItem('scores', JSON.stringify(info.scores));
+    if(parseInt(info.scores[0]) > parseInt(old_score1)) reload = true;
+    if(parseInt(info.scores[1]) > parseInt(old_score2)) reload = true;
+  }
+  if(info.pick && info.src){
+    player_switch(info.pick, info.src); 
+  }
+};
+
+function send_message(msg){
+  if(msg){
+    try {
+      socket.send(msg);
+      return true;
+    }
+    catch(error) {
+      return false;
+    }
+  }
+  else return false;
+}
+
+function kems(t){
+  if(t.id == 'player'+current_player && document.getElementById('players').getAttribute('count') == 4){
+      send_message('kems'+'|'+t.id.replace('player',''));
+  }
+  if(t.id != 'player'+current_player && document.getElementById('players').getAttribute('count') == 4){
+    if(current_player == 1 && t.id == 'player2') return false;
+    if(current_player == 2 && t.id == 'player1') return false;
+    if(current_player == 3 && t.id == 'player4') return false;
+    if(current_player == 4 && t.id == 'player3') return false;
+    send_message('ckems'+'|'+current_player+'|'+t.id.replace('player',''));
+  }
+}
+</script>

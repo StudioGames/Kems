@@ -1,0 +1,8 @@
+#!/bin/sh
+
+apt-get update
+apt-get install git nodejs npm -y
+npm install ws
+git clone https://github.com/StudioGames/Kems.git
+cd Kems
+node server.js
